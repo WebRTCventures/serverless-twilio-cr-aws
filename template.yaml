@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  # REST API with Lambda Integration
+  PostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: twilio-cr-setup-function
+      CodeUri: src/post/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Events:
+        PostApi:
+          Type: Api
+          Properties:
+            Path: /setup
+            Method: post
+
+  # WebSocket API
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: TwilioWebSocketAPI
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  # WebSocket Function
+  WebSocketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: twilio-cr-websocket-function
+      CodeUri: src/websocket/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+          - Effect: Allow
+            Action: execute-api:ManageConnections
+            Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+
+  # WebSocket Integration
+  WebSocketIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketFunction.Arn}/invocations
+      IntegrationMethod: POST
+
+  # WebSocket Routes with single Lambda permission
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  MessageRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: message
+      AuthorizationType: NONE
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target: !Sub integrations/${WebSocketIntegration}
+
+  # WebSocket Deployment and Stage
+  WebSocketDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn: [ConnectRoute, DisconnectRoute, MessageRoute, DefaultRoute]
+    Properties:
+      ApiId: !Ref WebSocketApi
+
+  WebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      DeploymentId: !Ref WebSocketDeployment
+      StageName: prod
+      DefaultRouteSettings:
+        DataTraceEnabled: true
+        LoggingLevel: INFO
+
+  # Single Lambda Permission for all routes
+  WebSocketPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref WebSocketFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+
+Outputs:
+  RestApiUrl:
+    Description: REST API Gateway endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/setup
+  
+  WebSocketUrl:
+    Description: WebSocket API Gateway endpoint URL
+    Value: !Sub wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/prod

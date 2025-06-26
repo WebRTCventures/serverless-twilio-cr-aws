@@ -1,0 +1,11 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "serverless-twilio-cr-aws"
+s3_bucket = "serverless-twilio-cr-aws-deployment"
+s3_prefix = "serverless-twilio-cr-aws"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false
+# parameter_overrides = ""
