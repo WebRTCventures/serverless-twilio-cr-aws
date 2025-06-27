@@ -123,6 +123,7 @@ def test_ai_response(mock_aws_clients, env_vars):
     assert "amazon.nova" in call_kwargs['modelId']
     assert 'messages' in call_kwargs
     assert 'system' in call_kwargs
+    assert 'inferenceConfig' in call_kwargs
 
 
 def test_ai_response_error(mock_aws_clients, env_vars):

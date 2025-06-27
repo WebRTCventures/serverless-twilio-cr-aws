@@ -32,14 +32,19 @@ def mock_aws_clients(monkeypatch):
     mock_chunk = MagicMock()
     mock_bytes = MagicMock()
     
-    # Create mock event for converse_stream
-    mock_event = MagicMock()
-    mock_event.chunk = MagicMock()
-    mock_event.chunk.message = MagicMock()
-    mock_event.chunk.message.content = "This is a test response"
+    # Create mock response for converse_stream
+    mock_stream_chunk = {
+        "contentBlockDelta": {
+            "delta": {
+                "text": "This is a test response"
+            }
+        }
+    }
     
     # Mock the converse_stream response
-    mock_bedrock.converse_stream.return_value = [mock_event]
+    mock_bedrock.converse_stream.return_value = {
+        "stream": [mock_stream_chunk]
+    }
     
     # Setup mock DynamoDB responses
     mock_table.get_item.return_value = {

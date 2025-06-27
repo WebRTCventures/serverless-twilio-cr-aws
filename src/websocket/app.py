@@ -28,21 +28,24 @@ def ai_response(messages, connection_id, client):
     try:
         # Convert messages to Amazon Nova format
         formatted_messages = []
-        system_message = None
+        system_content = None
         
         # Extract system message and format other messages
         for msg in messages:
             if msg["role"] == "system":
-                system_message = msg["content"]
+                system_content = msg["content"]
             elif msg["role"] == "user":
-                formatted_messages.append({"role": "user", "content": msg["content"]})
+                formatted_messages.append({"role": "user", "content": [{"text": msg["content"]}]})
             elif msg["role"] == "assistant":
-                formatted_messages.append({"role": "assistant", "content": msg["content"]})
+                formatted_messages.append({"role": "assistant", "content": [{"text": msg["content"]}]})
         
-        # Prepare request body
-        body = {
-            "messages": formatted_messages,
-            "system": system_message,
+        # Format system message as list for Nova API
+        system_message = None
+        if system_content:
+            system_message = [{"text": system_content}]
+        
+        # Configure inference parameters
+        inference_config = {
             "temperature": 0.7,
             "maxTokens": 1024
         }
@@ -51,27 +54,26 @@ def ai_response(messages, connection_id, client):
             modelId=model_id,
             messages=formatted_messages,
             system=system_message,
-            temperature=0.7,
-            maxTokens=1024
+            inferenceConfig=inference_config
         )
         
         full_response = ""
         
         # Process each chunk from the stream
-        for event in response:
-            if event.chunk and event.chunk.message:
-                content_text = event.chunk.message.content
+        for chunk in response["stream"]:
+            if "contentBlockDelta" in chunk:
+                content_text = chunk["contentBlockDelta"]["delta"]["text"]
                 if content_text:
-                        full_response += content_text
-                        # Send the chunk to the client
-                        client.post_to_connection(
-                            ConnectionId=connection_id,
-                            Data=json.dumps({
-                                "type": "text",
-                                "token": content_text,
-                                "last": False
-                            })
-                        )
+                    full_response += content_text
+                    # Send the chunk to the client
+                    client.post_to_connection(
+                        ConnectionId=connection_id,
+                        Data=json.dumps({
+                            "type": "text",
+                            "token": content_text,
+                            "last": False
+                        })
+                    )
         
         # Send final message with last=True
         client.post_to_connection(
