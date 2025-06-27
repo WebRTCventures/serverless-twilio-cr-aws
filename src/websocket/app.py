@@ -17,7 +17,7 @@ SYSTEM_PROMPT = "You are a helpful assistant. This conversation is being transla
 openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # Initialize DynamoDB client
-dynamodb = boto3.resource('dynamodb')
+dynamodb = boto3.resource('dynamodb', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
 table = dynamodb.Table(os.environ.get('SESSIONS_TABLE', 'TwilioSessions'))
 
 def ai_response(messages):
@@ -80,7 +80,9 @@ def lambda_handler(event, context):
         domain = event['requestContext']['domainName']
         stage = event['requestContext']['stage']
         endpoint = f"https://{domain}/{stage}"
-        client = boto3.client('apigatewaymanagementapi', endpoint_url=endpoint)
+        client = boto3.client('apigatewaymanagementapi', 
+                            endpoint_url=endpoint,
+                            region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
         
         if route_key == '$connect':
             logger.info(f"Client connected: {connection_id}")
@@ -108,8 +110,9 @@ def lambda_handler(event, context):
                         voice_prompt = message.get("voicePrompt")
                         
                         if not call_sid:
-                            logger.error("No callSid provided in prompt message")
-                            return {'statusCode': 400, 'headers': headers, 'body': json.dumps({'error': 'No callSid provided'})}
+                            # Use connection ID as fallback when callSid is not provided
+                            call_sid = connection_id
+                            logger.info(f"No callSid provided, using connection ID as key: {call_sid}")
                         
                         if not voice_prompt:
                             logger.warning(f"Empty voice prompt received for {call_sid}")
