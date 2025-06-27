@@ -4,6 +4,7 @@ import pytest
 import boto3
 import botocore.session
 from moto import mock_dynamodb
+from unittest.mock import patch, MagicMock
 
 # Set default region for boto3
 boto3.setup_default_session(region_name='us-east-1')
@@ -13,12 +14,69 @@ boto3.setup_default_session(region_name='us-east-1')
 def env_vars(monkeypatch):
     """Set required environment variables for tests"""
     monkeypatch.setenv('SESSIONS_TABLE', 'TwilioSessions')
-    monkeypatch.setenv('OPENAI_MODEL', 'gpt-4o-mini')
-    monkeypatch.setenv('OPENAI_API_KEY', 'test-api-key')
+    monkeypatch.setenv('BEDROCK_MODEL_ID', 'amazon.nova-text-pro-v1')
     monkeypatch.setenv('AWS_ACCESS_KEY_ID', 'test-access-key')
     monkeypatch.setenv('AWS_SECRET_ACCESS_KEY', 'test-secret-key')
     monkeypatch.setenv('AWS_DEFAULT_REGION', 'us-east-1')
 
+
+@pytest.fixture(autouse=True)
+def mock_aws_clients(monkeypatch):
+    """Mock AWS clients to avoid real AWS calls during tests"""
+    # Create mocks
+    mock_bedrock = MagicMock()
+    mock_table = MagicMock()
+    
+    # Setup mock streaming response
+    mock_event = MagicMock()
+    mock_chunk = MagicMock()
+    mock_bytes = MagicMock()
+    
+    # Create mock event for converse_stream
+    mock_event = MagicMock()
+    mock_event.chunk = MagicMock()
+    mock_event.chunk.message = MagicMock()
+    mock_event.chunk.message.content = "This is a test response"
+    
+    # Mock the converse_stream response
+    mock_bedrock.converse_stream.return_value = [mock_event]
+    
+    # Setup mock DynamoDB responses
+    mock_table.get_item.return_value = {
+        'Item': {
+            'callSid': 'test-call-sid',
+            'conversation': json.dumps([
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there!"}
+            ])
+        }
+    }
+    
+    # Import the app module
+    import src.websocket.app
+    
+    # Replace the global variables with mocks
+    src.websocket.app.bedrock_runtime = mock_bedrock
+    src.websocket.app.table = mock_table
+    
+    # Create a patch for boto3.client to return our mock for any new client creation
+    def mock_boto3_client(service_name, *args, **kwargs):
+        if service_name == 'bedrock-runtime':
+            return mock_bedrock
+        elif service_name == 'apigatewaymanagementapi':
+            return MagicMock()
+        else:
+            # For any other service, return a basic mock
+            return MagicMock()
+    
+    # Apply the patch
+    monkeypatch.setattr(boto3, 'client', mock_boto3_client)
+    
+    return {
+        'bedrock': mock_bedrock,
+        'table': mock_table
+    }
 
 @pytest.fixture
 def dynamodb_table(env_vars):

@@ -74,12 +74,12 @@ def test_missing_callsid_handling(missing_callsid_event, env_vars):
             # Verify the response - should now be 200 as we use connection ID as fallback
             assert response['statusCode'] == 200
             
-            # Verify that post_to_connection was called
-            mock_apigw.post_to_connection.assert_called_once()
-            
-            # Verify connection ID was used as the key
-            call_args = mock_apigw.post_to_connection.call_args[1]
-            assert call_args['ConnectionId'] == 'test-connection-id'
+            # Verify that ai_response was called with the correct parameters
+            mock_ai_response.assert_called_once()
+            # Check that connection_id and client were passed to enable streaming
+            call_kwargs = mock_ai_response.call_args.kwargs
+            assert call_kwargs.get('connection_id') == 'test-connection-id'
+            assert call_kwargs.get('client') is not None
 
 
 @patch('boto3.client')

@@ -23,14 +23,8 @@ if [ $? -ne 0 ]; then
   aws s3 mb s3://$BUCKET_NAME --region $REGION
 fi
 
-# Prompt for OpenAI API Key if not set
-if [ -z "$OPENAI_API_KEY" ]; then
-  read -sp "Enter your OpenAI API Key: " OPENAI_API_KEY
-  echo ""
-fi
-
 # Deploy with parameters
-sam deploy --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
+sam deploy
 
 echo "Deployment complete!"
 echo "Check the outputs for your API endpoints."

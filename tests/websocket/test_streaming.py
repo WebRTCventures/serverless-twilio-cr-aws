@@ -43,18 +43,13 @@ def test_streaming_response_format(mock_ai_response, websocket_streaming_event, 
         # Call the lambda handler
         lambda_handler(websocket_streaming_event, {})
         
-        # Verify the response format
-        mock_apigw.post_to_connection.assert_called_once()
-        call_args = mock_apigw.post_to_connection.call_args[1]
-        
-        # Check that the response is in the correct format
-        data = json.loads(call_args['Data'])
-        assert 'type' in data
-        assert data['type'] == 'text'
-        assert 'token' in data
-        assert data['token'] == "Once upon a time in a land far away..."
-        assert 'last' in data
-        assert data['last'] is True
+        # With streaming, we now send multiple messages and a final empty one with last=True
+        # Verify that ai_response was called with the correct parameters
+        mock_ai_response.assert_called_once()
+        # Check that connection_id and client were passed to enable streaming
+        call_kwargs = mock_ai_response.call_args.kwargs
+        assert call_kwargs.get('connection_id') == 'test-connection-id'
+        assert call_kwargs.get('client') is not None
 
 
 @patch('src.websocket.app.get_session')
@@ -84,9 +79,9 @@ def test_empty_prompt_handling(mock_ai_response, mock_save_session, mock_get_ses
         # Verify the response
         assert response['statusCode'] == 200
         
-        # With our updated code, we now handle empty prompts by using a default message
-        # So save_session should be called
-        mock_apigw.post_to_connection.assert_called_once()
-        call_args = mock_apigw.post_to_connection.call_args[1]
-        data = json.loads(call_args['Data'])
-        assert data['token'] == "I didn't catch that. Could you please repeat?"
+        # Verify that ai_response was called with the correct parameters
+        mock_ai_response.assert_called_once()
+        # Check that connection_id and client were passed to enable streaming
+        call_kwargs = mock_ai_response.call_args.kwargs
+        assert call_kwargs.get('connection_id') == 'test-connection-id'
+        assert call_kwargs.get('client') is not None

@@ -2,14 +2,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-  OpenAIApiKey:
+  BedrockModelId:
     Type: String
-    NoEcho: true
-    Description: OpenAI API Key
-  OpenAIModel:
-    Type: String
-    Default: gpt-4o-mini
-    Description: OpenAI model to use
+    Default: amazon.nova-pro-v1:0
+    Description: Amazon Bedrock model ID to use
 
 Resources:
   # DynamoDB Table for storing conversation sessions
@@ -67,8 +63,7 @@ Resources:
       MemorySize: 256
       Environment:
         Variables:
-          OPENAI_API_KEY: !Ref OpenAIApiKey
-          OPENAI_MODEL: !Ref OpenAIModel
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
           SESSIONS_TABLE: !Ref SessionsTable
       Policies:
         - AWSLambdaBasicExecutionRole
@@ -78,6 +73,11 @@ Resources:
           - Effect: Allow
             Action: execute-api:ManageConnections
             Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: '*'
 
   # WebSocket Integration
   WebSocketIntegration:

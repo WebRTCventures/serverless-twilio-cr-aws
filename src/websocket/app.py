@@ -3,7 +3,6 @@ import boto3
 import os
 import logging
 import time
-from openai import OpenAI
 from boto3.dynamodb.conditions import Key
 
 # Configure logging
@@ -13,23 +12,93 @@ logger.setLevel(logging.INFO)
 # Configuration
 SYSTEM_PROMPT = "You are a helpful assistant. This conversation is being translated to voice, so answer carefully. When you respond, please spell out all numbers, for example twenty not 20. Do not include emojis in your responses. Do not include bullet points, asterisks, or special symbols."
 
-# Initialize OpenAI client outside the handler for Lambda optimization
-openai = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# Initialize Bedrock client outside the handler for Lambda optimization
+bedrock_runtime = boto3.client(
+    service_name='bedrock-runtime',
+    region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
+)
 
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
 table = dynamodb.Table(os.environ.get('SESSIONS_TABLE', 'TwilioSessions'))
 
-def ai_response(messages):
-    """Get a response from OpenAI API"""
+def ai_response(messages, connection_id, client):
+    """Stream response from Amazon Bedrock to the client using converse_stream"""
+    model_id = os.environ.get("BEDROCK_MODEL_ID", "amazon.nova-text-pro-v1")
     try:
-        completion = openai.chat.completions.create(
-            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            messages=messages
+        # Convert messages to Amazon Nova format
+        formatted_messages = []
+        system_message = None
+        
+        # Extract system message and format other messages
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            elif msg["role"] == "user":
+                formatted_messages.append({"role": "user", "content": msg["content"]})
+            elif msg["role"] == "assistant":
+                formatted_messages.append({"role": "assistant", "content": msg["content"]})
+        
+        # Prepare request body
+        body = {
+            "messages": formatted_messages,
+            "system": system_message,
+            "temperature": 0.7,
+            "maxTokens": 1024
+        }
+        
+        response = bedrock_runtime.converse_stream(
+            modelId=model_id,
+            messages=formatted_messages,
+            system=system_message,
+            temperature=0.7,
+            maxTokens=1024
         )
-        return completion.choices[0].message.content
+        
+        full_response = ""
+        
+        # Process each chunk from the stream
+        for event in response:
+            if event.chunk and event.chunk.message:
+                content_text = event.chunk.message.content
+                if content_text:
+                        full_response += content_text
+                        # Send the chunk to the client
+                        client.post_to_connection(
+                            ConnectionId=connection_id,
+                            Data=json.dumps({
+                                "type": "text",
+                                "token": content_text,
+                                "last": False
+                            })
+                        )
+        
+        # Send final message with last=True
+        client.post_to_connection(
+            ConnectionId=connection_id,
+            Data=json.dumps({
+                "type": "text",
+                "token": "",  # Empty token for final message
+                "last": True
+            })
+        )
+        
+        return full_response
     except Exception as e:
-        logger.error(f"Error getting AI response: {str(e)}")
+        logger.error(f"Error in streaming response: {str(e)}")
+        # Send error message to client
+        try:
+            client.post_to_connection(
+                ConnectionId=connection_id,
+                Data=json.dumps({
+                    "type": "text",
+                    "token": "I'm sorry, I'm having trouble processing your request right now.",
+                    "last": True
+                })
+            )
+        except Exception as post_error:
+            logger.error(f"Error sending error message to client: {str(post_error)}")
+        
         return "I'm sorry, I'm having trouble processing your request right now."
 
 def get_session(call_sid):
@@ -126,8 +195,8 @@ def lambda_handler(event, context):
                         # Add user message
                         conversation.append({"role": "user", "content": voice_prompt})
                         
-                        # Get AI response
-                        response = ai_response(conversation)
+                        # Get AI response with streaming
+                        response = ai_response(messages=conversation, connection_id=connection_id, client=client)
                         
                         # Add assistant response to conversation
                         conversation.append({"role": "assistant", "content": response})
@@ -135,30 +204,19 @@ def lambda_handler(event, context):
                         # Save updated conversation
                         save_session(call_sid, conversation)
                         
-                        # Send response back to client
-                        try:
-                            client.post_to_connection(
-                                ConnectionId=connection_id,
-                                Data=json.dumps({
-                                    "type": "text",
-                                    "token": response,
-                                    "last": True
-                                })
-                            )
-                            logger.info(f"Sent response: {response}")
-                        except Exception as e:
-                            logger.error(f"Error sending message to client: {str(e)}")
-                    
+                        logger.info(f"Sent streaming response completed")
                     elif message.get("type") == "interrupt":
                         logger.info("Handling interruption.")
                         # Handle interruption logic here if needed
-                        
+                    
                     else:
                         logger.warning(f"Unknown message type: {message.get('type')}")
                         
+                except Exception as e:
+                    logger.error(f"Error in streaming response process: {str(e)}")
                 except json.JSONDecodeError:
                     logger.warning(f"Could not parse body as JSON: {event.get('body')}")
-            
+                
             return {'statusCode': 200, 'headers': headers}
             
     except Exception as e:

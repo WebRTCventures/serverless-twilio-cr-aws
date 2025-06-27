@@ -1,6 +1,6 @@
 # Serverless Twilio Conversation Relay with AWS
 
-This project implements a serverless backend for Twilio Conversation Relay, allowing you to create voice assistants powered by OpenAI's models.
+This project implements a serverless backend for Twilio Conversation Relay, allowing you to create voice assistants powered by Amazon Bedrock models.
 
 This project creates:
 - REST API with POST endpoint at `/twiml` that returns TwiML for Twilio
@@ -12,7 +12,7 @@ This project creates:
 - **API Gateway**: Handles HTTP and WebSocket requests
 - **Lambda Functions**: Python 3.12 runtime for request processing
 - **DynamoDB**: Stores conversation sessions
-- **OpenAI API**: Provides AI responses
+- **Amazon Bedrock**: Provides AI responses with streaming capability
 - **SAM**: Infrastructure as Code for AWS deployment
 
 ## Prerequisites
@@ -20,7 +20,7 @@ This project creates:
 - AWS CLI configured with appropriate permissions
 - SAM CLI installed
 - Python 3.12
-- OpenAI API key
+- AWS account with Amazon Bedrock access
 - Twilio account with a phone number configured for Voice
 
 ## Deploy
@@ -29,7 +29,7 @@ This project creates:
 # Make the deployment script executable
 chmod +x deploy.sh
 
-# One-step deployment (you'll be prompted for your OpenAI API key)
+# One-step deployment (uses default Bedrock model or BEDROCK_MODEL_ID env var)
 ./deploy.sh
 ```
 
@@ -62,7 +62,7 @@ If you encounter issues:
 
 1. Check CloudWatch logs for both Lambda functions
 2. Verify the TwiML endpoint URL is correctly configured in Twilio
-3. Ensure your OpenAI API key is valid and has sufficient quota
+3. Ensure your AWS account has access to the Amazon Bedrock model you're using
 4. Check that the WebSocket URL in the TwiML response matches your API Gateway WebSocket URL
 5. Verify Lambda permissions are correctly set up for DynamoDB access
 6. Check that the integration URI format is correct in the SAM template
@@ -71,7 +71,7 @@ If you encounter issues:
 
 - Change the welcome greeting by modifying the `WELCOME_GREETING` variable in the POST function
 - Modify the system prompt by updating the `SYSTEM_PROMPT` variable in the WebSocket function
-- Change the OpenAI model by updating the `OpenAIModel` parameter during deployment
+- Change the Bedrock model by updating the `BedrockModelId` parameter during deployment
 - Adjust the TTL for conversation sessions (default is 24 hours)
 
 ## Lambda Optimization
@@ -82,9 +82,9 @@ This project uses Lambda optimization techniques:
 - Implements proper error handling with detailed logging
 - Configures appropriate timeout and memory settings
 
-## Future Improvements
+## Features
 
-- Add streaming responses for more natural conversation flow
+- Streaming responses for more natural conversation flow
 - Implement conversation history management (deletion, export)
 - Add support for multiple languages
 - Implement authentication for the TwiML endpoint
