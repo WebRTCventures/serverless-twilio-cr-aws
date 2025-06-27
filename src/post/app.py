@@ -1,31 +1,44 @@
 import json
-from datetime import datetime
+import os
 
 # Initialize any static resources outside the handler
 # for Lambda optimization
+WELCOME_GREETING = "Hi! I am a voice assistant powered by Twilio and Open A I . Ask me anything!"
 
 def lambda_handler(event, context):
     """
-    Handle POST requests to /setup endpoint
+    Handle POST requests to /twiml endpoint
     
     Parameters:
     - event: API Gateway event
     - context: Lambda context
     
     Returns:
-    - API Gateway response object
+    - TwiML response for Twilio to connect to the WebSocket
     """
-    body = json.loads(event.get('body', '{}'))
+    # Get the WebSocket URL from environment variable or construct it
+    stage = os.environ.get('STAGE', 'prod')
+    domain = os.environ.get('DOMAIN_NAME')
+    
+    # If domain is not set, try to extract it from the event
+    if not domain and event.get('requestContext'):
+        domain = event['requestContext'].get('domainName')
+    
+    # Construct WebSocket URL
+    ws_url = f"wss://{domain}/{stage}"
+    
+    # Create TwiML response
+    xml_response = f"""<?xml version="1.0" encoding="UTF-8"?>
+    <Response>
+      <Connect>
+        <ConversationRelay url="{ws_url}" welcomeGreeting="{WELCOME_GREETING}" />
+      </Connect>
+    </Response>"""
     
     return {
         'statusCode': 200,
         'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Content-Type': 'text/xml'
         },
-        'body': json.dumps({
-            'message': 'Setup request received',
-            'data': body,
-            'timestamp': datetime.utcnow().isoformat()
-        })
+        'body': xml_response
     }

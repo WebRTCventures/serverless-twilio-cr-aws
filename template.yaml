@@ -1,20 +1,50 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
+Parameters:
+  OpenAIApiKey:
+    Type: String
+    NoEcho: true
+    Description: OpenAI API Key
+  OpenAIModel:
+    Type: String
+    Default: gpt-4o-mini
+    Description: OpenAI model to use
+
 Resources:
+  # DynamoDB Table for storing conversation sessions
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TwilioSessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: callSid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: callSid
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
   # REST API with Lambda Integration
   PostFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: twilio-cr-setup-function
+      FunctionName: twilio-cr-twiml-function
       CodeUri: src/post/
       Handler: app.lambda_handler
       Runtime: python3.12
+      Environment:
+        Variables:
+          STAGE: !Ref WebSocketStage
+          DOMAIN_NAME: !Sub ${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com
       Events:
         PostApi:
           Type: Api
           Properties:
-            Path: /setup
+            Path: /twiml
             Method: post
 
   # WebSocket API
@@ -33,8 +63,17 @@ Resources:
       CodeUri: src/websocket/
       Handler: app.lambda_handler
       Runtime: python3.12
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+          OPENAI_MODEL: !Ref OpenAIModel
+          SESSIONS_TABLE: !Ref SessionsTable
       Policies:
         - AWSLambdaBasicExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTable
         - Statement:
           - Effect: Allow
             Action: execute-api:ManageConnections
@@ -111,7 +150,7 @@ Resources:
 Outputs:
   RestApiUrl:
     Description: REST API Gateway endpoint URL
-    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/setup
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/twiml
   
   WebSocketUrl:
     Description: WebSocket API Gateway endpoint URL
