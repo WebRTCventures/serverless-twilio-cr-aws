@@ -23,23 +23,6 @@ def invalid_json_event():
     }
 
 
-@pytest.fixture
-def missing_callsid_event():
-    """Create a mock WebSocket event with missing callSid"""
-    return {
-        'requestContext': {
-            'connectionId': 'test-connection-id',
-            'routeKey': '$default',
-            'domainName': 'test-domain.execute-api.us-east-1.amazonaws.com',
-            'stage': 'prod'
-        },
-        'body': json.dumps({
-            'type': 'prompt',
-            'voicePrompt': 'Hello, how are you?'
-        })
-    }
-
-
 def test_invalid_json_handling(invalid_json_event, env_vars):
     """Test handling of invalid JSON in the request body"""
     with patch('boto3.client') as mock_client:
@@ -55,31 +38,6 @@ def test_invalid_json_handling(invalid_json_event, env_vars):
         
         # The function should handle the error gracefully
         mock_apigw.post_to_connection.assert_not_called()
-
-
-def test_missing_callsid_handling(missing_callsid_event, env_vars):
-    """Test handling of missing callSid in prompt messages"""
-    with patch('boto3.client') as mock_client:
-        # Mock the API Gateway Management API client
-        mock_apigw = MagicMock()
-        mock_client.return_value = mock_apigw
-        
-        # Mock AI response
-        with patch('src.websocket.app.ai_response') as mock_ai_response:
-            mock_ai_response.return_value = "Hello there!"
-            
-            # Call the lambda handler
-            response = lambda_handler(missing_callsid_event, {})
-            
-            # Verify the response - should now be 200 as we use connection ID as fallback
-            assert response['statusCode'] == 200
-            
-            # Verify that ai_response was called with the correct parameters
-            mock_ai_response.assert_called_once()
-            # Check that connection_id and client were passed to enable streaming
-            call_kwargs = mock_ai_response.call_args.kwargs
-            assert call_kwargs.get('connection_id') == 'test-connection-id'
-            assert call_kwargs.get('client') is not None
 
 
 @patch('boto3.client')

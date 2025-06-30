@@ -20,10 +20,6 @@ def lambda_handler(event, context):
     stage = os.environ.get('STAGE', 'prod')
     domain = os.environ.get('DOMAIN_NAME')
     
-    # If domain is not set, try to extract it from the event
-    if not domain and event.get('requestContext'):
-        domain = event['requestContext'].get('domainName')
-    
     # Construct WebSocket URL
     ws_url = f"wss://{domain}/{stage}"
     

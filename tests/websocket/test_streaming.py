@@ -50,38 +50,3 @@ def test_streaming_response_format(mock_ai_response, websocket_streaming_event, 
         call_kwargs = mock_ai_response.call_args.kwargs
         assert call_kwargs.get('connection_id') == 'test-connection-id'
         assert call_kwargs.get('client') is not None
-
-
-@patch('src.websocket.app.get_session')
-@patch('src.websocket.app.save_session')
-@patch('src.websocket.app.ai_response')
-def test_empty_prompt_handling(mock_ai_response, mock_save_session, mock_get_session, websocket_streaming_event, env_vars):
-    """Test handling of empty voice prompts"""
-    # Modify the event to have an empty prompt
-    event_data = json.loads(websocket_streaming_event['body'])
-    event_data['voicePrompt'] = ''
-    websocket_streaming_event['body'] = json.dumps(event_data)
-    
-    # Setup mock session
-    mock_get_session.return_value = [{"role": "system", "content": "You are a helpful assistant."}]
-    
-    # Setup mock AI response
-    mock_ai_response.return_value = "I didn't catch that. Could you please repeat?"
-    
-    with patch('boto3.client') as mock_client:
-        # Mock the API Gateway Management API client
-        mock_apigw = MagicMock()
-        mock_client.return_value = mock_apigw
-        
-        # Call the lambda handler
-        response = lambda_handler(websocket_streaming_event, {})
-        
-        # Verify the response
-        assert response['statusCode'] == 200
-        
-        # Verify that ai_response was called with the correct parameters
-        mock_ai_response.assert_called_once()
-        # Check that connection_id and client were passed to enable streaming
-        call_kwargs = mock_ai_response.call_args.kwargs
-        assert call_kwargs.get('connection_id') == 'test-connection-id'
-        assert call_kwargs.get('client') is not None

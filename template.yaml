@@ -15,14 +15,11 @@ Resources:
       TableName: TwilioSessions
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: callSid
+        - AttributeName: connection_id
           AttributeType: S
       KeySchema:
-        - AttributeName: callSid
+        - AttributeName: connection_id
           KeyType: HASH
-      TimeToLiveSpecification:
-        AttributeName: ttl
-        Enabled: true
 
   # REST API with Lambda Integration
   PostFunction:
@@ -105,14 +102,6 @@ Resources:
       AuthorizationType: NONE
       Target: !Sub integrations/${WebSocketIntegration}
 
-  MessageRoute:
-    Type: AWS::ApiGatewayV2::Route
-    Properties:
-      ApiId: !Ref WebSocketApi
-      RouteKey: message
-      AuthorizationType: NONE
-      Target: !Sub integrations/${WebSocketIntegration}
-
   DefaultRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
@@ -124,7 +113,7 @@ Resources:
   # WebSocket Deployment and Stage
   WebSocketDeployment:
     Type: AWS::ApiGatewayV2::Deployment
-    DependsOn: [ConnectRoute, DisconnectRoute, MessageRoute, DefaultRoute]
+    DependsOn: [ConnectRoute, DisconnectRoute, DefaultRoute]
     Properties:
       ApiId: !Ref WebSocketApi
 

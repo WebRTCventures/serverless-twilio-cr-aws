@@ -13,13 +13,10 @@ logger.setLevel(logging.INFO)
 SYSTEM_PROMPT = "You are a helpful assistant. This conversation is being translated to voice, so answer carefully. When you respond, please spell out all numbers, for example twenty not 20. Do not include emojis in your responses. Do not include bullet points, asterisks, or special symbols."
 
 # Initialize Bedrock client outside the handler for Lambda optimization
-bedrock_runtime = boto3.client(
-    service_name='bedrock-runtime',
-    region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1')
-)
+bedrock_runtime = boto3.client('bedrock-runtime')
 
 # Initialize DynamoDB client
-dynamodb = boto3.resource('dynamodb', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
+dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ.get('SESSIONS_TABLE', 'TwilioSessions'))
 
 def ai_response(messages, connection_id, client):
@@ -103,10 +100,10 @@ def ai_response(messages, connection_id, client):
         
         return "I'm sorry, I'm having trouble processing your request right now."
 
-def get_session(call_sid):
+def get_session(connection_id):
     """Get conversation session from DynamoDB"""
     try:
-        response = table.get_item(Key={'callSid': call_sid})
+        response = table.get_item(Key={'connection_id': connection_id})
         if 'Item' in response:
             return json.loads(response['Item']['conversation'])
         return [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -114,14 +111,14 @@ def get_session(call_sid):
         logger.error(f"Error getting session: {str(e)}")
         return [{"role": "system", "content": SYSTEM_PROMPT}]
 
-def save_session(call_sid, conversation):
+def save_session(connection_id, conversation):
     """Save conversation session to DynamoDB"""
     try:
         table.put_item(
             Item={
-                'callSid': call_sid,
+                'connection_id': connection_id,
                 'conversation': json.dumps(conversation),
-                'ttl': int(time.time()) + 86400  # 24 hour TTL
+                'created_at': time.strftime('%Y-%m-%d %H:%M:%S UTC')
             }
         )
     except Exception as e:
@@ -171,28 +168,17 @@ def lambda_handler(event, context):
                     logger.info(f"Message received: {message}")
                     
                     if message.get("type") == "setup":
-                        call_sid = message.get("callSid")
-                        logger.info(f"Setup for call: {call_sid}")
+                        logger.info(f"Setup for call: {connection_id}")
                         # Initialize session in DynamoDB
-                        save_session(call_sid, [{"role": "system", "content": SYSTEM_PROMPT}])
+                        save_session(connection_id, [{"role": "system", "content": SYSTEM_PROMPT}])
                         
                     elif message.get("type") == "prompt":
-                        call_sid = message.get("callSid")
                         voice_prompt = message.get("voicePrompt")
-                        
-                        if not call_sid:
-                            # Use connection ID as fallback when callSid is not provided
-                            call_sid = connection_id
-                            logger.info(f"No callSid provided, using connection ID as key: {call_sid}")
-                        
-                        if not voice_prompt:
-                            logger.warning(f"Empty voice prompt received for {call_sid}")
-                            voice_prompt = "I didn't catch that. Could you please repeat?"
                             
-                        logger.info(f"Processing prompt for {call_sid}: {voice_prompt}")
+                        logger.info(f"Processing prompt for {connection_id}: {voice_prompt}")
                         
                         # Get conversation history
-                        conversation = get_session(call_sid)
+                        conversation = get_session(connection_id)
                         
                         # Add user message
                         conversation.append({"role": "user", "content": voice_prompt})
@@ -204,7 +190,7 @@ def lambda_handler(event, context):
                         conversation.append({"role": "assistant", "content": response})
                         
                         # Save updated conversation
-                        save_session(call_sid, conversation)
+                        save_session(connection_id, conversation)
                         
                         logger.info(f"Sent streaming response completed")
                     elif message.get("type") == "interrupt":
